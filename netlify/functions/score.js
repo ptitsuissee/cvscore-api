@@ -103,7 +103,7 @@ exports.handler = async (event) => {
                 : `Langue: FR\nPays ciblé: ${country}\nPoste visé: ${job_title || "N/A"}\n\nCV:\n${cv_text}`),
           },
         ],
-        text: { format: { type: "json_schema", strict: true, schema } },
+       text: { format: { type: "json_schema", name: "cvscore_score", strict: true, schema } },
         temperature: 0.2,
       }),
     });
