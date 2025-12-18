@@ -103,67 +103,60 @@ exports.handler = async (event) => {
                 : `Langue: FR\nPays ciblé: ${country}\nPoste visé: ${job_title || "N/A"}\n\nCV:\n${cv_text}`),
           },
         ],
-       text: { format: { type: "json_schema", name: "cvscore_score", strict: true, schema } },
+        text: {
+          format: {
+            type: "json_schema",
+            name: "cvscore_score",
+            strict: true,
+            schema,
+          },
+        },
         temperature: 0.2,
       }),
     });
 
-    if (!resp.ok) {
-      const errText = await resp.text();
+    const data = await resp.json();
+
+    let outputText = "";
+
+    if (typeof data.output_text === "string") {
+      outputText = data.output_text.trim();
+    }
+
+    if (!outputText && Array.isArray(data.output)) {
+      const parts = [];
+      for (const item of data.output) {
+        if (!item || !Array.isArray(item.content)) continue;
+        for (const c of item.content) {
+          if (!c) continue;
+          if (typeof c.text === "string") parts.push(c.text);
+          if (typeof c.output_text === "string") parts.push(c.output_text);
+        }
+      }
+      outputText = parts.join("").trim();
+    }
+
+    if (!outputText) {
       return {
         statusCode: 500,
         headers: corsHeaders,
-        body: JSON.stringify({ error: "OpenAI error", details: errText }),
+        body: JSON.stringify({ error: "OpenAI returned empty output", raw: data }),
       };
     }
 
-    const data = await resp.json();
-
-// 1) Essaye d'abord le champ "output_text" s'il existe
-let outputText = (typeof data.output_text === "string" && data.output_text.trim())
-  ? data.output_text.trim()
-  : "";
-
-// 2) Sinon, récupère le texte depuis data.output[].content[]
-if (!outputText && Array.isArray(data.output)) {
-  const chunks = [];
-  for (const item of data.output) {
-    if (!item || !Array.isArray(item.content)) continue;
-    for (const c of item.content) {
-      if (!c) continue;
-      if (c.type === "output_text" && typeof c.text === "string") chunks.push(c.text);
-      if (c.type === "text" && typeof c.text === "string") chunks.push(c.text);
+    let result;
+    try {
+      result = JSON.parse(outputText);
+    } catch (e) {
+      return {
+        statusCode: 500,
+        headers: corsHeaders,
+        body: JSON.stringify({
+          error: "OpenAI output was not valid JSON",
+          outputText,
+        }),
+      };
     }
-  }
-  outputText = chunks.join("").trim();
-}
-
-// 3) Si toujours vide, renvoie une erreur lisible (debug)
-if (!outputText) {
-  return {
-    statusCode: 500,
-    headers: corsHeaders,
-    body: JSON.stringify({
-      error: "OpenAI returned empty output",
-      details: data
-    }),
-  };
-}
-
-let result;
-try {
-  result = JSON.parse(outputText);
-} catch (e) {
-  return {
-    statusCode: 500,
-    headers: corsHeaders,
-    body: JSON.stringify({
-      error: "OpenAI output was not valid JSON",
-      outputText,
-      parseError: String(e)
-    }),
-  };
-}
 
     return {
       statusCode: 200,
