@@ -118,8 +118,64 @@ exports.handler = async (event) => {
     }
 
     const data = await resp.json();
-    const outputText = data.output_text || "";
-    const result = JSON.parse(outputText);
+
+// Récupère du texte de manière robuste
+let outputText = "";
+
+// 1) output_text (quand présent)
+if (typeof data.output_text === "string") {
+  outputText = data.output_text.trim();
+}
+
+// 2) Sinon, concatène tous les textes dans data.output[].content[]
+if (!outputText && Array.isArray(data.output)) {
+  const parts = [];
+  for (const item of data.output) {
+    if (!item || !Array.isArray(item.content)) continue;
+    for (const c of item.content) {
+      if (!c) continue;
+      if (typeof c.text === "string") parts.push(c.text);
+      if (typeof c.output_text === "string") parts.push(c.output_text);
+      if (typeof c.content === "string") parts.push(c.content);
+    }
+  }
+  outputText = parts.join("").trim();
+}
+
+// 3) Si toujours vide, renvoie un debug complet
+if (!outputText) {
+  return {
+    statusCode: 500,
+    headers: corsHeaders,
+    body: JSON.stringify({
+      error: "OpenAI returned empty output (no text to parse)",
+      raw: data
+    }),
+  };
+}
+
+// 4) Parse JSON en sécurité
+let result;
+try {
+  result = JSON.parse(outputText);
+} catch (e) {
+  return {
+    statusCode: 500,
+    headers: corsHeaders,
+    body: JSON.stringify({
+      error: "OpenAI output was not valid JSON",
+      parseError: String(e),
+      outputText,
+      raw: data
+    }),
+  };
+}
+
+return {
+  statusCode: 200,
+  headers: { ...corsHeaders, "Content-Type": "application/json" },
+  body: JSON.stringify(result),
+};
 
     return {
       statusCode: 200,
