@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>CVScore Widget</title>
+  <style>
+    body{font-family:system-ui;margin:0;padding:16px;background:transparent}
+    .card{border:1px solid #ddd;border-radius:14px;padding:14px;background:#fff}
+    textarea,input,select,button{width:100%;padding:10px;margin-top:8px;border:1px solid #ccc;border-radius:10px;font:inherit}
+    button{cursor:pointer}
+    .row{display:flex;gap:10px}
+    .row > *{flex:1}
+    .muted{opacity:.7;font-size:12px}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}
+    .kpi{border:1px solid #eee;border-radius:12px;padding:10px;background:#fafafa}
+    .kpi b{display:block;font-size:12px;opacity:.75}
+    .kpi span{font-size:18px;font-weight:700}
+    ul{margin:8px 0 0 18px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="row">
+      <select id="lang">
+        <option value="fr">FR</option>
+        <option value="en">EN</option>
+      </select>
+      <select id="country">
+        <option value="CH">CH</option>
+        <option value="FR">FR</option>
+        <option value="DE">DE</option>
+        <option value="IT">IT</option>
+        <option value="ES">ES</option>
+        <option value="EU">EU</option>
+      </select>
+    </div>
+
+    <input id="job" placeholder="Poste visé (optionnel) / Target role (optional)" />
+    <textarea id="cv" rows="10" placeholder="Colle ton CV ici / Paste your resume here"></textarea>
+
+    <button id="btn">Analyser / Analyze</button>
+    <div class="muted">Analyse en direct via l’API CVScore.ai</div>
+
+    <div id="out" style="margin-top:12px;"></div>
+  </div>
+
+  <script>
+    const API_URL = "https://apicvscore.netlify.app/.netlify/functions/score";
+    const $ = (id) => document.getElementById(id);
+    const out = $("out");
+
+    $("btn").addEventListener("click", async () => {
+      out.innerHTML = "Analyse en cours…";
+      const payload = {
+        lang: $("lang").value,
+        country: $("country").value,
+        job_title: $("job").value,
+        cv_text: $("cv").value
+      };
+
+      try {
+        const r = await fetch(API_URL, {
+          method: "POST",
+          headers: {"Content-Type":"application/json"},
+          body: JSON.stringify(payload)
+        });
+        const data = await r.json();
+        if(!r.ok) throw new Error(JSON.stringify(data));
+
+        out.innerHTML = `
+          <div style="font-size:22px;font-weight:800;">Score: ${data.overall_score}/100</div>
+
+          <div class="grid">
+            <div class="kpi"><b>Clarity</b><span>${data.sub_scores?.clarity ?? "-"}</span></div>
+            <div class="kpi"><b>Impact</b><span>${data.sub_scores?.impact ?? "-"}</span></div>
+            <div class="kpi"><b>Structure</b><span>${data.sub_scores?.structure ?? "-"}</span></div>
+            <div class="kpi"><b>ATS</b><span>${data.sub_scores?.ats_compatibility ?? "-"}</span></div>
+          </div>
+
+          <div style="margin-top:10px;"><b>Résumé</b><div>${data.summary || ""}</div></div>
+
+          <div style="margin-top:10px;"><b>Priorités</b>
+            <ul>${(data.priority_fixes||[]).map(x=>`<li>${x}</li>`).join("")}</ul>
+          </div>
+
+          <div style="margin-top:10px;"><b>Conseils</b>
+            <ul>${(data.actionable_tips||[]).map(x=>`<li>${x}</li>`).join("")}</ul>
+          </div>
+
+          <div class="muted" style="margin-top:10px;">${data.country_specific_advice||""}</div>
+        `;
+      } catch (e) {
+        out.innerHTML = `<div style="color:#b00020;font-weight:700;">Erreur</div><pre style="white-space:pre-wrap;">${e.message}</pre>`;
+      }
+    });
+  </script>
+</body>
+</html>
