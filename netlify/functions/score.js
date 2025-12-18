@@ -118,8 +118,52 @@ exports.handler = async (event) => {
     }
 
     const data = await resp.json();
-    const outputText = data.output_text || "";
-    const result = JSON.parse(outputText);
+
+// 1) Essaye d'abord le champ "output_text" s'il existe
+let outputText = (typeof data.output_text === "string" && data.output_text.trim())
+  ? data.output_text.trim()
+  : "";
+
+// 2) Sinon, récupère le texte depuis data.output[].content[]
+if (!outputText && Array.isArray(data.output)) {
+  const chunks = [];
+  for (const item of data.output) {
+    if (!item || !Array.isArray(item.content)) continue;
+    for (const c of item.content) {
+      if (!c) continue;
+      if (c.type === "output_text" && typeof c.text === "string") chunks.push(c.text);
+      if (c.type === "text" && typeof c.text === "string") chunks.push(c.text);
+    }
+  }
+  outputText = chunks.join("").trim();
+}
+
+// 3) Si toujours vide, renvoie une erreur lisible (debug)
+if (!outputText) {
+  return {
+    statusCode: 500,
+    headers: corsHeaders,
+    body: JSON.stringify({
+      error: "OpenAI returned empty output",
+      details: data
+    }),
+  };
+}
+
+let result;
+try {
+  result = JSON.parse(outputText);
+} catch (e) {
+  return {
+    statusCode: 500,
+    headers: corsHeaders,
+    body: JSON.stringify({
+      error: "OpenAI output was not valid JSON",
+      outputText,
+      parseError: String(e)
+    }),
+  };
+}
 
     return {
       statusCode: 200,
