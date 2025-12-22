@@ -29,8 +29,20 @@ async function addPremiumEmailToAirtable(email) {
 
 exports.handler = async (event) => {
   try {
-    const sig = event.headers["stripe-signature"]; // Netlify met les headers en lowercase
-    if (!sig) return { statusCode: 400, body: "Missing stripe-signature" };
+    const sig = event.headers["stripe-signature"];
+    if (!sig) {
+      return {
+        statusCode: 200,
+        body: JSON.stringify({
+          ok: true,
+          message: "Webhook reachable. Waiting for Stripe signed events.",
+          hasStripeSecret: !!process.env.STRIPE_WEBHOOK_SECRET,
+          hasStripeKey: !!process.env.STRIPE_SECRET_KEY,
+          hasAirtableKey: !!process.env.AIRTABLE_API_KEY,
+          hasAirtableBase: !!process.env.AIRTABLE_BASE_ID,
+        }),
+      };
+    }
 
     let stripeEvent;
     try {
@@ -41,20 +53,21 @@ exports.handler = async (event) => {
       );
     } catch (err) {
       console.log("❌ Signature verify failed:", err.message);
-      return { statusCode: 400, body: `Webhook Error: ${err.message}` };
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: "bad_signature", message: err.message }),
+      };
     }
 
-    // Log minimal
     console.log("✅ Stripe event:", stripeEvent.type);
 
-    // On active Premium sur checkout.session.completed (le plus fiable pour Buy Buttons)
     if (stripeEvent.type === "checkout.session.completed") {
       const session = stripeEvent.data.object;
 
       const email =
-        (session.customer_details && session.customer_details.email) ||
+        session.customer_details?.email ||
         session.customer_email ||
-        (session.customer && session.customer.email) ||
+        session.customer?.email ||
         "";
 
       console.log("Extracted email:", email);
@@ -67,15 +80,12 @@ exports.handler = async (event) => {
       }
     }
 
-    // IMPORTANT: Toujours répondre 200 si on ne veut pas que Stripe retry
     return { statusCode: 200, body: "ok" };
-    } catch (e) {
+  } catch (e) {
     console.log("🔥 Webhook crashed:", String(e));
     return {
       statusCode: 500,
-      body: JSON.stringify({
-        error: "webhook_crashed",
-        message: String(e)
-      }),
+      body: JSON.stringify({ error: "webhook_crashed", message: String(e) }),
     };
   }
+};
