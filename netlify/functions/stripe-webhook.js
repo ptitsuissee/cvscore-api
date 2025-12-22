@@ -69,8 +69,13 @@ exports.handler = async (event) => {
 
     // IMPORTANT: Toujours répondre 200 si on ne veut pas que Stripe retry
     return { statusCode: 200, body: "ok" };
-  } catch (e) {
+    } catch (e) {
     console.log("🔥 Webhook crashed:", String(e));
-    return { statusCode: 500, body: "server error" };
+    return {
+      statusCode: 500,
+      body: JSON.stringify({
+        error: "webhook_crashed",
+        message: String(e)
+      }),
+    };
   }
-};
